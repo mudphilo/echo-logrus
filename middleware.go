@@ -2,50 +2,67 @@
 package middleware
 
 import (
-	"strconv"
+	"github.com/sirupsen/logrus"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/neko-neko/echo-logrus/v2/log"
 )
 
 // Logger returns a middleware that logs HTTP requests.
 func Logger() echo.MiddlewareFunc {
+
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
+
 		return func(c echo.Context) error {
+
 			req := c.Request()
 			res := c.Response()
 			start := time.Now()
+			startMicro := start.UnixMicro()
 
 			var err error
 			if err = next(c); err != nil {
+
 				c.Error(err)
 			}
+
 			stop := time.Now()
+			stopMicro := stop.UnixMicro()
 
 			id := req.Header.Get(echo.HeaderXRequestID)
 			if id == "" {
+
 				id = res.Header().Get(echo.HeaderXRequestID)
 			}
+
 			reqSize := req.Header.Get(echo.HeaderContentLength)
 			if reqSize == "" {
+
 				reqSize = "0"
 			}
 
-			log.Infof("%s %s [%v] %s %-7s %s %3d %s %s %13v %s %s",
-				id,
-				c.RealIP(),
-				stop.Format(time.RFC3339),
-				req.Host,
-				req.Method,
-				req.RequestURI,
-				res.Status,
-				reqSize,
-				strconv.FormatInt(res.Size, 10),
-				stop.Sub(start).String(),
-				req.Referer(),
-				req.UserAgent(),
-			)
+			traceID := req.Header.Get("trace-id")
+			if traceID == "" {
+
+				traceID = "0"
+			}
+
+			logrus.WithFields(logrus.Fields{
+				"service":   "api",
+				"id":   id,
+				"real_ip": c.RealIP(),
+				"time": stop.Format(time.RFC3339),
+				"host":req.Host,
+				"method": req.Method,
+				"request_uri": req.RequestURI,
+				"status": res.Status,
+				"request_size": reqSize,
+				"referer": req.Referer(),
+				"user_agent": req.UserAgent(),
+				"response_time_millisecond": stopMicro - startMicro,
+				"trace-id": traceID,
+			}).Infof("API Response")
+
 			return err
 		}
 	}
